@@ -7,6 +7,7 @@ namespace WindowsFormsApp1.Models
         public string ConversationTitle { get; set; }
         public string TextFilePath { get; set; }
         public List<string> AudioFilePaths { get; set; }
+        public List<string> ImageFilePaths { get; set; }
         public List<MessageModel> Messages { get; set; }
 
         public string ImportReport { get; set; }

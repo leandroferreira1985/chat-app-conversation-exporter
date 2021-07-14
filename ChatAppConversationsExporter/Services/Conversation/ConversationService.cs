@@ -12,11 +12,17 @@ namespace WindowsFormsApp1.Services.Conversation
 {
     public class ConversationService
     {
-        private List<string> audioFileExtensions;
+        private List<string> _audioFileExtensions;
+        private List<string> _imageFileExtensions;
+        private ConversationModel _conversationModel;
+        private ReconigtionService _reconigtionService;
 
         public ConversationService()
         {
-            audioFileExtensions = new List<string>() { ".opus", ".mp3", ".wav", ".ogg" };
+            _reconigtionService = new ReconigtionService();
+            _conversationModel = new ConversationModel();
+            _audioFileExtensions = new List<string>() { ".opus", ".mp3", ".wav", ".ogg" };
+            _imageFileExtensions = new List<string>() { ".png", ".jpg", ".jpeg" };
         }
 
         public ConversationModel GetConversation(string conversationFolderPath)
@@ -24,31 +30,31 @@ namespace WindowsFormsApp1.Services.Conversation
             var sb = new StringBuilder();
 
             var allFiles = Directory.GetFiles(conversationFolderPath).ToList();
-            var textFilePath = allFiles.FirstOrDefault(c => c.EndsWith("txt"));
-            var audioFilePaths = allFiles.Where(c => audioFileExtensions.Contains(Path.GetExtension(c))).ToList();
+            _conversationModel.TextFilePath = allFiles.FirstOrDefault(c => c.EndsWith("txt"));
+            _conversationModel.AudioFilePaths = allFiles.Where(c => _audioFileExtensions.Contains(Path.GetExtension(c))).ToList();
+            _conversationModel.ImageFilePaths = allFiles.Where(c => _imageFileExtensions.Contains(Path.GetExtension(c))).ToList();
 
-            if (textFilePath != null)
+            if (_conversationModel.TextFilePath != null)
             {
-                var conversationModel = new ConversationModel();
-                conversationModel.ConversationTitle = Path.GetFileNameWithoutExtension(textFilePath);
-                conversationModel.TextFilePath = textFilePath;
-                conversationModel.Messages = GetConversationModels(File.ReadAllText(textFilePath));
+                _conversationModel.ConversationTitle = Path.GetFileNameWithoutExtension(_conversationModel.TextFilePath);                
+                
+                _conversationModel.Messages = GetMessagesModels(File.ReadAllText(_conversationModel.TextFilePath));
 
-                sb.AppendLine($"CONVERSA: {conversationModel.ConversationTitle.ToUpper()}");
-                sb.AppendLine($"Quantidade de Mensagens: {conversationModel.Messages.Count}");
+                sb.AppendLine($"CONVERSA: {_conversationModel.ConversationTitle.ToUpper()}");
+                sb.AppendLine($"Quantidade de Mensagens: {_conversationModel.Messages.Count}");
 
-                if (audioFilePaths.Any())
+                // Handling audio files
+                if (_conversationModel.AudioFilePaths.Any())
                 {
-                    conversationModel.AudioFilePaths = audioFilePaths;
 
                     // Verificar se o arquivo de conversa possui as referencias de anexo de midia
-                    var attachedAudioFilesCount = audioFilePaths.Count;
+                    var attachedAudioFilesCount = _conversationModel.AudioFilePaths.Count;
                     sb.AppendLine($"Número de arquivos de áudios anexados: {attachedAudioFilesCount}");
 
                     var mentionedAudioFileCount = 0;
-                    foreach (var audioFileName in audioFilePaths.Select(c => Path.GetFileName(c)).ToList())
+                    foreach (var audioFileName in _conversationModel.AudioFilePaths.Select(c => Path.GetFileName(c)).ToList())
                     {
-                        if (conversationModel.Messages.FirstOrDefault(line => line.Text.Contains(audioFileName)) != null)
+                        if (_conversationModel.Messages.FirstOrDefault(line => line.Text.Contains(audioFileName)) != null)
                             mentionedAudioFileCount++;
                     }
 
@@ -71,11 +77,44 @@ namespace WindowsFormsApp1.Services.Conversation
                     sb.AppendLine($"Quantidade de arquivos áudio: 0");
                 }
 
-                sb.AppendLine($"FIM DO RESUMO DA CONVERSA {conversationModel.ConversationTitle.ToUpper()}");
+                // Handling image files
+                if (_conversationModel.ImageFilePaths.Any())
+                {
+                    // Verificar se o arquivo de conversa possui as referencias de anexo de midia
+                    var attachedImageFilesCount = _conversationModel.ImageFilePaths.Count;
+                    sb.AppendLine($"Número de arquivos de imagem anexados: {attachedImageFilesCount}");
 
-                conversationModel.ImportReport = sb.ToString();
+                    var mentionedImageFileCount = 0;
+                    foreach (var imageFileName in _conversationModel.ImageFilePaths.Select(c => Path.GetFileName(c)).ToList())
+                    {
+                        if (_conversationModel.Messages.FirstOrDefault(line => line.Text.Contains(imageFileName)) != null)
+                            mentionedImageFileCount++;
+                    }
 
-                return conversationModel;
+                    sb.AppendLine($"Número de arquivos de imagem mencionados: {mentionedImageFileCount}");
+
+                    if (mentionedImageFileCount.Equals(attachedImageFilesCount))
+                    {
+                        sb.AppendLine($"Todos arquivos de imagem mencionados na conversa foram encontrados");
+                    }
+                    else
+                    {
+                        if (mentionedImageFileCount > attachedImageFilesCount)
+                            sb.AppendLine($"A conversa possui mais arquivos de imagem mencionados do que os anexados");
+                        else
+                            sb.AppendLine($"Foram anexados mais arquivos de imagem do que a quantidade mencionada na conversa.");
+                    }
+                }
+                else
+                {
+                    sb.AppendLine($"Quantidade de arquivos imagem: 0");
+                }
+
+                sb.AppendLine($"FIM DO RESUMO DA CONVERSA {_conversationModel.ConversationTitle.ToUpper()}");
+
+                _conversationModel.ImportReport = sb.ToString();
+
+                return _conversationModel;
             }
 
             return null;
@@ -93,6 +132,10 @@ namespace WindowsFormsApp1.Services.Conversation
                 {
                     sb.Append($"<p><b>{message.Timestamp} {message.Author}:</b>&nbsp;&nbsp;<span style=\"font-size:smaller;font-style:italic\">(Transcrição de áudio)</span><br/><span style=\"font-style:italic;padding-left:15px\">{message.Text}</span></p>");
                 }
+                else if (message.IsImage)
+                {                    
+                    sb.Append($"<p><b>{message.Timestamp} {message.Author}:</b><br/><img src=\"{message.Text}\" class=\"conversation-image\"/></p>");
+                }
                 else
                 {
                     sb.Append($"<p><b>{message.Timestamp} {message.Author}:</b><br/><span style=\"padding-left:15px\">{message.Text}</span></p>");
@@ -104,7 +147,7 @@ namespace WindowsFormsApp1.Services.Conversation
             return sb.ToString();
         }
 
-        private List<MessageModel> GetConversationModels(string conversationContent)
+        private List<MessageModel> GetMessagesModels(string conversationContent)
         {
             var response = new List<MessageModel>();
 
@@ -138,29 +181,51 @@ namespace WindowsFormsApp1.Services.Conversation
                         model.Author = "Aplicativo";
                     }
 
-                    var audioFilePath = GetAudioFile(text);
+                    var audioFileName = GetAudioFile(text);
 
-                    if (string.IsNullOrEmpty(audioFilePath))
+                    if (!string.IsNullOrEmpty(audioFileName))
                     {
-                        model.IsAudioTranscription = false;
+                        model.IsAudioTranscription = true;
+                        var audioFilePath = _conversationModel.AudioFilePaths.FirstOrDefault(c => Path.GetFileName(c).Equals(audioFileName));
 
-                        var startIndex = endNamePosition == -1 ? 0 : endNamePosition + 2;
-                        model.Text = text.Substring(startIndex, text.Length - startIndex);
+                        var audioRecognitionResponse = _reconigtionService.GetAudioTranscription(audioFilePath);
+
+                        if (audioRecognitionResponse.IsSuccess)
+                        {
+                            model.Text = audioRecognitionResponse.Result;
+                        }
+                        else
+                        {
+                            model.Text = $"Não foi possível transcrever o aúdio {text}. Motivo: {audioRecognitionResponse.Result}";
+                        }
                     }
                     else
                     {
                         model.IsAudioTranscription = false;
-                        var reconigtionService = new ReconigtionService();
 
-                        var recognitionResponse = reconigtionService.GetAudioTranscription(audioFilePath);
+                        var imageFileName = GetImageFile(text);
 
-                        if (recognitionResponse.IsSuccess)
+                        if (!string.IsNullOrEmpty(imageFileName))
                         {
-                            model.Text = recognitionResponse.Result;
+                            model.IsImage = true;
+                            var imageFilePath = _conversationModel.ImageFilePaths.FirstOrDefault(c => Path.GetFileName(c).Equals(imageFileName));
+                            var imageRecognitionResponse = _reconigtionService.GetImageBase64(imageFilePath);
+
+                            if (imageRecognitionResponse.IsSuccess)
+                            {
+                                model.Text = imageRecognitionResponse.Result;
+                            }
+                            else
+                            {
+                                model.IsImage = false;
+                                model.Text = $"Não foi possível converter a image {text}. Motivo: {imageRecognitionResponse.Result}";
+                            }
                         }
                         else
                         {
-                            model.Text = $"Não foi possível transcrever o aúdio. Motivo: {recognitionResponse.Result}";
+                            model.IsImage = false;
+                            var startIndex = endNamePosition == -1 ? 0 : endNamePosition + 2;
+                            model.Text = text.Substring(startIndex, text.Length - startIndex);
                         }
                     }
 
@@ -177,9 +242,22 @@ namespace WindowsFormsApp1.Services.Conversation
             return response;
         }
 
+        private string GetImageFile(string text)
+        {
+            if (_conversationModel.ImageFilePaths != null && _conversationModel.ImageFilePaths.Any())
+            {
+                var fileNames = _conversationModel.ImageFilePaths.Select(c => Path.GetFileName(c));
+
+                return fileNames.FirstOrDefault(c => text.Contains(c));
+
+            }
+
+            return null;
+        }
+
         private string GetAudioFile(string messageString)
         {
-            // TODO: implement
+            // TODO: implement (disabled due transciption library limitations)
             return null;
         }
     }

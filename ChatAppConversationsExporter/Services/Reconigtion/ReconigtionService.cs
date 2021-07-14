@@ -1,5 +1,6 @@
 ﻿using Google.Cloud.Speech.V1;
 using System;
+using System.Drawing;
 using System.IO;
 using System.Text;
 using WindowsFormsApp1.Configurations;
@@ -46,6 +47,36 @@ namespace WindowsFormsApp1.Services.Reconigtion
 
                 response.IsSuccess = true;
                 response.Result = sb.ToString();
+            }
+            catch (Exception ex)
+            {
+                response.IsSuccess = false;
+                response.Result = ex.Message;
+            }
+
+            return response;
+        }
+
+        public RecognitionResponse GetImageBase64(string imageFilePath)
+        {
+            var response = new RecognitionResponse();
+
+            try
+            {
+                using (Image image = Image.FromFile(imageFilePath))
+                {
+                    using (MemoryStream m = new MemoryStream())
+                    {
+                        image.Save(m, image.RawFormat);
+                        var imageBytes = m.ToArray();
+
+                        var base64String = Convert.ToBase64String(imageBytes);
+                        var imageExtension = Path.GetExtension(imageFilePath).Replace(".", string.Empty);
+
+                        response.IsSuccess = true;
+                        response.Result = $"data:image/{imageExtension};base64,{base64String}";
+                    }
+                }
             }
             catch (Exception ex)
             {
